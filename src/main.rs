@@ -8,7 +8,7 @@ use sdl2::render::Canvas;
 use sdl2::video::Window;
 use std::time::Duration;
 use std::f32;
-
+use std::cmp;
 
 /// Types
 struct Point {
@@ -22,6 +22,9 @@ type Vector = Point;
 const FOV: f32 = f32::consts::PI * 0.416;
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 800;
+const SPEED: f32 = 0.1;
+// 1 deg * 2
+const ROT_SPEED: f32 = 0.017453292519943 * 2.0;
 
 /// Helper Functions
 // TOOD: turn these into macros
@@ -67,17 +70,38 @@ fn intersect(origin: &Point, vec: Vector, cube: &Point) -> f32 {
         return -1.0;
     }
 }
-// TODO: Should we convert it to an int now, or later?
 // TODO: Figure out wtf this does, I basically copied from Python code
 fn distance_to_height(dist: f32, angle: f32) -> f32 {
-    return ((HEIGHT / 2) as f32 - 50.0) / (dist * f32::cos(angle));
+    return ((HEIGHT) as f32 - 50.0) / (dist * f32::cos(angle));
 }
 fn draw_rect(canvas: &mut Canvas<Window>, x: u32, height: f32, width: u32) {
-    let height = height as u32;
+    let height = cmp::min(height as u32, HEIGHT);
     let x = x as i32;
     let y = ((HEIGHT / 2) - (height / 2)) as i32;
-    println!("x: {}, y: {}, width: {}, height: {}", x, y, width, height);
+    // println!("x: {}, y: {}, width: {}, height: {}", x, y, width, height);
     canvas.fill_rect(Rect::new(x, y, width, height));
+}
+fn render(canvas: &mut Canvas<Window>,
+          position: &Point,
+          cube: &Point,
+          iterations: u32,
+          direction: f32) {
+    canvas.set_draw_color(Color::RGB(255, 255, 255));
+    canvas.clear();
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    let mut theta = direction + (FOV / 2.0);
+    let delta_theta = FOV / (iterations as f32);
+    let width = WIDTH / iterations;
+    for i in 0..iterations {
+        let vector = angle_to_vec(theta);
+        let dist = intersect(&position, vector, &cube);
+        if dist > 0.0 {
+            let height = distance_to_height(dist, (direction - theta).abs());
+            draw_rect(canvas, i * width, height, width);
+        }
+        theta -= delta_theta;
+    }
+    canvas.present();
 }
 
 /// Main
@@ -93,31 +117,15 @@ fn main() {
         .unwrap();
 
     let mut canvas = window.into_canvas().build().unwrap();
-    canvas.set_draw_color(Color::RGB(255, 255, 255));
-    canvas.clear();
-
-    canvas.set_draw_color(Color::RGB(0, 0, 0));
 
     // Scene setup
-    let origin = Point { x: 0.0, y: 0.0 };
+    let mut render_flag = true;
+    let mut position = Point { x: 0.0, y: 0.0 };
     let cube = Point { x: 1.0, y: 1.0 };
-    let iterations = 200;
+    let iterations = 800;
     let mut direction = f32::consts::PI / 4.0;
-    let mut theta = direction + (FOV / 2.0);
-    let delta_theta = FOV / (iterations as f32);
-    let width = WIDTH / iterations;
-    for i in 0..iterations {
-        let vector = angle_to_vec(theta);
-        let dist = intersect(&origin, vector, &cube);
-        println!("{}", dist);
-        if dist > 0.0 {
-            let height = distance_to_height(dist, (direction - theta).abs());
-            draw_rect(&mut canvas, i * width, height, width);
-        }
-        theta -= delta_theta;
-    }
+    render(&mut canvas, &position, &cube, iterations, direction);
 
-    canvas.present();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     'running: loop {
@@ -126,7 +134,32 @@ fn main() {
                 Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     break 'running
                 },
-                _ => {}
+                Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+                    let vector = angle_to_vec(direction);
+                    position.x += SPEED * vector.x;
+                    position.y += SPEED * vector.y;
+                    render_flag = true;
+                },
+                Event::KeyDown { keycode: Some(Keycode::A), .. } => {
+                    direction += ROT_SPEED;
+                    render_flag = true;
+                },
+                Event::KeyDown { keycode: Some(Keycode::S), .. } => {
+                    let vector = angle_to_vec(direction);
+                    position.x -= SPEED * vector.x;
+                    position.y -= SPEED * vector.y;
+                    render_flag = true;
+                },
+                Event::KeyDown { keycode: Some(Keycode::D), .. } => {
+                    direction -= ROT_SPEED;
+                    render_flag = true;
+                },
+                _ => {
+                    if render_flag {
+                        render(&mut canvas, &position, &cube, iterations, direction);
+                        render_flag = false;
+                    }
+                }
             }
         }
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
