@@ -86,7 +86,7 @@ fn distance_to_height(dist: f32, angle: f32) -> f32 {
     return ((HEIGHT) as f32 - 50.0) / (dist * f32::cos(angle));
 }
 fn draw_rect(canvas: &mut Canvas<Window>, x: u32, height: f32, width: u32) {
-    // haha let's explain this one later
+    // TODO: add fog mode toggle
     let alpha = ((1.0 - fmin(1.0, ((height + HEIGHT as f32 / 2.0) / (HEIGHT as f32)))) * 255.0) as u8;
     canvas.set_draw_color(Color::RGB(alpha, alpha, alpha));
     let height = cmp::min(height as u32, HEIGHT);
