@@ -19,7 +19,6 @@ type Vector = Point;
 
 /// Constants
 // 75 deg
-const FOV: f32 = f32::consts::PI * 0.416;
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 800;
 const SPEED: f32 = 0.1;
@@ -28,6 +27,9 @@ const ROT_SPEED: f32 = 0.017453292519943 * 2.0;
 
 /// Helper Functions
 // TOOD: turn these into macros
+fn rad(deg: f32) -> f32 {
+    return (deg / 180.0) * f32::consts::PI;
+}
 fn fmin(a: f32, b:f32) -> f32 {
     if a < b {
         return a;
@@ -99,12 +101,13 @@ fn render(canvas: &mut Canvas<Window>,
           position: &Point,
           map: &Vec<Point>,
           samples: u32,
-          direction: f32) {
+          direction: f32,
+          fov: f32) {
     canvas.set_draw_color(Color::RGB(255, 255, 255));
     canvas.clear();
     canvas.set_draw_color(Color::RGB(0, 0, 0));
-    let mut theta = direction + (FOV / 2.0);
-    let delta_theta = FOV / (samples as f32);
+    let mut theta = direction + (fov / 2.0);
+    let delta_theta = fov / (samples as f32);
     let width = WIDTH / samples;
     for i in 0..samples {
         let vector = angle_to_vec(theta);
@@ -134,7 +137,7 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let window = video_subsystem.window("rust-sdl2 demo: Video", WIDTH, HEIGHT)
+    let window = video_subsystem.window("rust-raytracer", WIDTH, HEIGHT)
         .position_centered()
         .opengl()
         .build()
@@ -145,9 +148,10 @@ fn main() {
     // Scene setup
     let mut render_flag = true;
     let mut position = Point { x: 0.0, y: 0.0 };
+    let mut fov: f32 = f32::consts::PI * 0.416;
     let mut map: Vec<Point> = Vec::new();
     gen_map(&mut map);
-    let samples = 800;
+    let mut samples = 800;
     let mut direction = f32::consts::PI / 4.0;
 
     let mut event_pump = sdl_context.event_pump().unwrap();
@@ -155,7 +159,9 @@ fn main() {
     'running: loop {
         for event in event_pump.poll_iter() {
             match event {
-                Event::Quit {..} | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                Event::Quit {..} |
+                  Event::KeyDown { keycode: Some(Keycode::Escape), .. } |
+                  Event::KeyDown { keycode: Some(Keycode::Q), .. } => {
                     break 'running
                 },
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
@@ -178,11 +184,33 @@ fn main() {
                     direction -= ROT_SPEED;
                     render_flag = true;
                 },
+                // Decrease fov
+                Event::KeyDown { keycode: Some(Keycode::Num1), .. } => {
+                    fov -= rad(1.0);
+                    render_flag = true;
+                },
+                // Increase fov
+                Event::KeyDown { keycode: Some(Keycode::Num2), .. } => {
+                    fov += rad(1.0);
+                    render_flag = true;
+                },
+                // Decrease Resolution
+                Event::KeyDown { keycode: Some(Keycode::Num3), .. } => {
+                    samples /= 2;
+                    samples = cmp::max(1, samples);
+                    render_flag = true;
+                },
+                // Increase Resolution
+                Event::KeyDown { keycode: Some(Keycode::Num4), .. } => {
+                    samples *= 2;
+                    samples = cmp::min(samples, WIDTH);
+                    render_flag = true;
+                },
                 _ => {}
             }
         }
         if render_flag {
-            render(&mut canvas, &position, &map, samples, direction);
+            render(&mut canvas, &position, &map, samples, direction, fov);
             render_flag = false;
         }
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
