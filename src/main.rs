@@ -47,7 +47,8 @@ fn angle_to_vec(theta: f32) -> Vector {
 }
 // Intersection algorithm AABB
 // - Returns -1 on failed intersection, otherwise returns distance
-fn intersect(origin: &Point, vec: Vector, cube: &Point) -> f32 {
+// TODO: Consider changing it -> an optional on failed intersection (it'll clean up other areas)
+fn intersect(origin: &Point, vec: &Vector, cube: &Point) -> f32 {
     let mut tmin = f32::NEG_INFINITY;
     let mut tmax = f32::INFINITY;
     if vec.x != 0.0 {
@@ -62,7 +63,7 @@ fn intersect(origin: &Point, vec: Vector, cube: &Point) -> f32 {
         tmin = fmax(tmin, fmin(ty1, ty2));
         tmax = fmin(tmax, fmax(ty1, ty2));
     }
-    if tmax >= tmin {
+    if tmax >= tmin && tmax >= 0.0 {
         let dist = f32::sqrt(f32::powf(vec.x * tmin, 2.0) + f32::powf(vec.y * tmin, 2.0));
         return dist;
     } else {
@@ -78,23 +79,43 @@ fn draw_rect(canvas: &mut Canvas<Window>, x: u32, height: f32, width: u32) {
     let height = cmp::min(height as u32, HEIGHT);
     let x = x as i32;
     let y = ((HEIGHT / 2) - (height / 2)) as i32;
-    // println!("x: {}, y: {}, width: {}, height: {}", x, y, width, height);
+    //println!("x: {}, y: {}, width: {}, height: {}", x, y, width, height);
     canvas.fill_rect(Rect::new(x, y, width, height));
+}
+fn gen_map(map: &mut Vec<Point>) {
+    map.push(Point{ x: 1.0, y: 1.0 });
+    map.push(Point{ x: 3.0, y: 3.0 });
+    map.push(Point{ x: 3.0, y: 4.0 });
+    map.push(Point{ x: 1.0, y: 6.0 });
+    map.push(Point{ x: 3.0, y: 5.0 });
+    map.push(Point{ x: 5.0, y: 3.0 });
+    map.push(Point{ x: 5.0, y: 4.0 });
+    map.push(Point{ x: 5.0, y: 5.0 });
 }
 fn render(canvas: &mut Canvas<Window>,
           position: &Point,
-          cube: &Point,
-          iterations: u32,
+          map: &Vec<Point>,
+          samples: u32,
           direction: f32) {
     canvas.set_draw_color(Color::RGB(255, 255, 255));
     canvas.clear();
     canvas.set_draw_color(Color::RGB(0, 0, 0));
     let mut theta = direction + (FOV / 2.0);
-    let delta_theta = FOV / (iterations as f32);
-    let width = WIDTH / iterations;
-    for i in 0..iterations {
+    let delta_theta = FOV / (samples as f32);
+    let width = WIDTH / samples;
+    for i in 0..samples {
         let vector = angle_to_vec(theta);
-        let dist = intersect(&position, vector, &cube);
+        let mut dist = f32::NEG_INFINITY;
+        for cube in map {
+            let temp = intersect(&position, &vector, cube);
+            if temp > 0.0 {
+                if dist == f32::NEG_INFINITY {
+                    dist = temp;
+                } else {
+                    dist = fmin(dist, temp);
+                }
+            }
+        }
         if dist > 0.0 {
             let height = distance_to_height(dist, (direction - theta).abs());
             draw_rect(canvas, i * width, height, width);
@@ -121,10 +142,10 @@ fn main() {
     // Scene setup
     let mut render_flag = true;
     let mut position = Point { x: 0.0, y: 0.0 };
-    let cube = Point { x: 1.0, y: 1.0 };
-    let iterations = 800;
+    let mut map: Vec<Point> = Vec::new();
+    gen_map(&mut map);
+    let samples = 800;
     let mut direction = f32::consts::PI / 4.0;
-    render(&mut canvas, &position, &cube, iterations, direction);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
@@ -154,15 +175,13 @@ fn main() {
                     direction -= ROT_SPEED;
                     render_flag = true;
                 },
-                _ => {
-                    if render_flag {
-                        render(&mut canvas, &position, &cube, iterations, direction);
-                        render_flag = false;
-                    }
-                }
+                _ => {}
             }
         }
+        if render_flag {
+            render(&mut canvas, &position, &map, samples, direction);
+            render_flag = false;
+        }
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-        // The rest of the game loop goes here...
     }
 }
