@@ -5,4 +5,4 @@ authors = ["Stephen Jayakar <aj12ay@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-sdl2 = "0.30.0"
+sdl2 = "0.32.1"
