@@ -1,3 +1,4 @@
+#[macro_use]
 /// Imports
 extern crate sdl2;
 use sdl2::pixels::Color;
@@ -11,17 +12,25 @@ use std::f32;
 use std::cmp;
 
 /// Types
+#[derive(Clone, Copy, Debug)]
 struct Point {
     x: f32,
     y: f32,
 }
 type Vector = Point;
+#[derive(Debug)]
+struct State {
+    position: Point,
+    samples: u32,
+    direction: f32,
+    fov: f32,
+}
 
 /// Constants
 // 75 deg
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 800;
-const SPEED: f32 = 0.1;
+const SPEED: f32 = 0.2;
 // 1 deg * 2
 const ROT_SPEED: f32 = 0.017453292519943 * 2.0;
 
@@ -50,7 +59,7 @@ fn angle_to_vec(theta: f32) -> Vector {
 // Intersection algorithm AABB
 // - Returns -1 on failed intersection, otherwise returns distance
 // TODO: Consider changing it -> an optional on failed intersection (it'll clean up other areas)
-fn intersect(origin: &Point, vec: &Vector, cube: &Point) -> f32 {
+fn intersect(origin: Point, vec: Vector, cube: Point) -> f32 {
     let mut tmin = f32::NEG_INFINITY;
     let mut tmax = f32::INFINITY;
     if vec.x != 0.0 {
@@ -83,9 +92,9 @@ fn gen_map(map: &mut Vec<Point>) {
     map.push(Point{ x: 5.0, y: 4.0 });
     map.push(Point{ x: 5.0, y: 5.0 });
 }
-// TODO: Figure out wtf this does, I basically copied from Python code
+// TODO: Why does this still cause minor distortion?
 fn distance_to_height(dist: f32, angle: f32) -> f32 {
-    return ((HEIGHT) as f32 - 50.0) / (dist * f32::cos(angle));
+    return ((HEIGHT) as f32) / (dist * f32::cos(angle));
 }
 fn draw_rect(canvas: &mut Canvas<Window>, x: u32, height: f32, width: u32) {
     // TODO: add fog mode toggle
@@ -98,11 +107,12 @@ fn draw_rect(canvas: &mut Canvas<Window>, x: u32, height: f32, width: u32) {
     canvas.fill_rect(Rect::new(x, y, width, height));
 }
 fn render(canvas: &mut Canvas<Window>,
-          position: &Point,
           map: &Vec<Point>,
-          samples: u32,
-          direction: f32,
-          fov: f32) {
+          state: &State) {
+    let direction = state.direction;
+    let fov = state.fov;
+    let samples = state.samples;
+    let position = state.position;
     canvas.set_draw_color(Color::RGB(255, 255, 255));
     canvas.clear();
     canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -113,7 +123,7 @@ fn render(canvas: &mut Canvas<Window>,
         let vector = angle_to_vec(theta);
         let mut dist = f32::NEG_INFINITY;
         for cube in map {
-            let temp = intersect(&position, &vector, cube);
+            let temp = intersect(position, vector, *cube);
             if temp > 0.0 {
                 if dist == f32::NEG_INFINITY {
                     dist = temp;
@@ -147,13 +157,14 @@ fn main() {
 
     // Scene setup
     let mut render_flag = true;
-    let mut position = Point { x: 0.0, y: 0.0 };
-    let mut fov: f32 = f32::consts::PI * 0.416;
+    let mut state = State {
+      position: Point { x: 0.0, y: 0.0 },
+      fov: f32::consts::PI * 0.416,
+      samples: 800,
+      direction: f32::consts::PI / 4.0
+    };
     let mut map: Vec<Point> = Vec::new();
     gen_map(&mut map);
-    let mut samples = 800;
-    let mut direction = f32::consts::PI / 4.0;
-
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     'running: loop {
@@ -165,52 +176,56 @@ fn main() {
                     break 'running
                 },
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-                    let vector = angle_to_vec(direction);
-                    position.x += SPEED * vector.x;
-                    position.y += SPEED * vector.y;
+                    let vector = angle_to_vec(state.direction);
+                    state.position.x += SPEED * vector.x;
+                    state.position.y += SPEED * vector.y;
                     render_flag = true;
                 },
                 Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-                    direction += ROT_SPEED;
+                    state.direction += ROT_SPEED;
                     render_flag = true;
                 },
                 Event::KeyDown { keycode: Some(Keycode::S), .. } => {
-                    let vector = angle_to_vec(direction);
-                    position.x -= SPEED * vector.x;
-                    position.y -= SPEED * vector.y;
+                    let vector = angle_to_vec(state.direction);
+                    state.position.x -= SPEED * vector.x;
+                    state.position.y -= SPEED * vector.y;
                     render_flag = true;
                 },
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                    direction -= ROT_SPEED;
+                    state.direction -= ROT_SPEED;
                     render_flag = true;
                 },
                 // Decrease fov
                 Event::KeyDown { keycode: Some(Keycode::Num1), .. } => {
-                    fov -= rad(1.0);
+                    state.fov -= rad(1.0);
                     render_flag = true;
                 },
                 // Increase fov
                 Event::KeyDown { keycode: Some(Keycode::Num2), .. } => {
-                    fov += rad(1.0);
+                    state.fov += rad(1.0);
                     render_flag = true;
                 },
                 // Decrease Resolution
                 Event::KeyDown { keycode: Some(Keycode::Num3), .. } => {
-                    samples /= 2;
-                    samples = cmp::max(1, samples);
+                    state.samples /= 2;
+                    state.samples = cmp::max(1, state.samples);
                     render_flag = true;
                 },
                 // Increase Resolution
                 Event::KeyDown { keycode: Some(Keycode::Num4), .. } => {
-                    samples *= 2;
-                    samples = cmp::min(samples, WIDTH);
+                    state.samples *= 2;
+                    state.samples = cmp::min(state.samples, WIDTH);
                     render_flag = true;
+                },
+                // Toggle fog mode
+                Event::KeyDown { keycode: Some(Keycode::F), .. } => {
+                    println!("Toggling fog not implemented yet!");
                 },
                 _ => {}
             }
         }
         if render_flag {
-            render(&mut canvas, &position, &map, samples, direction, fov);
+            render(&mut canvas, &map, &state);
             render_flag = false;
         }
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
