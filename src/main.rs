@@ -29,7 +29,7 @@ struct State {
 /// Constants
 // 75 deg
 const WIDTH: u32 = 800;
-const HEIGHT: u32 = 800;
+const HEIGHT: u32 = 480;
 const SPEED: f32 = 0.2;
 // 1 deg * 2
 const ROT_SPEED: f32 = 0.017453292519943 * 2.0;
@@ -59,7 +59,7 @@ fn angle_to_vec(theta: f32) -> Vector {
 // Intersection algorithm AABB
 // - Returns -1 on failed intersection, otherwise returns distance
 // TODO: Consider changing it -> an optional on failed intersection (it'll clean up other areas)
-fn intersect(origin: Point, vec: Vector, cube: Point) -> f32 {
+fn intersect(origin: Point, vec: Vector, cube: Point) -> Option<f32> {
     let mut tmin = f32::NEG_INFINITY;
     let mut tmax = f32::INFINITY;
     if vec.x != 0.0 {
@@ -76,10 +76,9 @@ fn intersect(origin: Point, vec: Vector, cube: Point) -> f32 {
     }
     if tmax >= tmin && tmin >= 0.0 {
         let dist = f32::sqrt(f32::powf(vec.x * tmin, 2.0) + f32::powf(vec.y * tmin, 2.0));
-        return dist;
+        Some(dist)
     } else {
-        // TODO: Change this to a constant
-        return -1.0;
+        None
     }
 }
 fn gen_map(map: &mut Vec<Point>) {
@@ -121,18 +120,13 @@ fn render(canvas: &mut Canvas<Window>,
     let width = WIDTH / samples;
     for i in 0..samples {
         let vector = angle_to_vec(theta);
-        let mut dist = f32::NEG_INFINITY;
+        let mut dist = f32::INFINITY;
         for cube in map {
-            let temp = intersect(position, vector, *cube);
-            if temp > 0.0 {
-                if dist == f32::NEG_INFINITY {
-                    dist = temp;
-                } else {
-                    dist = fmin(dist, temp);
-                }
+            if let Some(intersection_distance) = intersect(position, vector, *cube) {
+                dist = fmin(dist, intersection_distance);
             }
         }
-        if dist > 0.0 {
+        if dist < f32::INFINITY {
             let height = distance_to_height(dist, (direction - theta).abs());
             draw_rect(canvas, state, i * width, height, width);
         }
@@ -147,7 +141,7 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let window = video_subsystem.window("rust-raytracer", WIDTH, HEIGHT)
+    let window = video_subsystem.window("procedural-raytracer", WIDTH, HEIGHT)
         .position_centered()
         .opengl()
         .build()
