@@ -6,7 +6,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::f32;
 use std::cmp;
 
@@ -30,7 +30,7 @@ struct State {
 // 75 deg
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 480;
-const SPEED: f32 = 0.2;
+const SPEED: f32 = 0.5;
 // 1 deg * 2
 const ROT_SPEED: f32 = 0.017453292519943 * 2.0;
 
@@ -108,6 +108,24 @@ fn draw_rect(canvas: &mut Canvas<Window>, state: &State, x: u32, height: f32, wi
     //println!("x: {}, y: {}, width: {}, height: {}", x, y, width, height);
     canvas.fill_rect(Rect::new(x, y, width, height));
 }
+
+struct ProceduralGenerator {
+    start_time: Instant
+}
+
+impl ProceduralGenerator {
+    pub fn new() -> ProceduralGenerator {
+        ProceduralGenerator {
+            start_time: Instant::now(),
+        }
+    }
+
+    fn get_image(&self, width: u32, height: u32, timestamp: Instant) -> ? {
+        // we need to convert from rect -> 
+        // how to draw rect on png?
+    }
+}
+
 fn render(canvas: &mut Canvas<Window>,
           map: &Vec<Point>,
           state: &State) {
@@ -174,6 +192,7 @@ fn main() {
                     let vector = angle_to_vec(state.direction);
                     state.position.x += SPEED * vector.x;
                     state.position.y += SPEED * vector.y;
+                    println!("Current position: ({}, {})", state.position.x, state.position.y);
                     render_flag = true;
                 },
                 Event::KeyDown { keycode: Some(Keycode::A), .. } => {
