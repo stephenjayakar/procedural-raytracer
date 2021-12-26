@@ -33,6 +33,10 @@ const HEIGHT: u32 = 480;
 const SPEED: f32 = 0.5;
 // 1 deg * 2
 const ROT_SPEED: f32 = 0.017453292519943 * 2.0;
+const STARTING_POSITION: Point = Point{ x: 0.0, y: 0.0 };
+const FOV: f32 = f32::consts::PI * 0.416;
+const SAMPLES: u32 = 800;
+const STARTING_DIRECTION: f32 = f32::consts::PI / 4.0;
 
 /// Helper Functions
 // TOOD: turn these into macros
@@ -105,8 +109,16 @@ fn draw_rect(canvas: &mut Canvas<Window>, state: &State, x: u32, height: f32, wi
     let height = cmp::min(height as u32, HEIGHT);
     let x = x as i32;
     let y = ((HEIGHT / 2) - (height / 2)) as i32;
-    //println!("x: {}, y: {}, width: {}, height: {}", x, y, width, height);
     canvas.fill_rect(Rect::new(x, y, width, height));
+}
+
+// TODO: use this
+fn create_rect(canvas: &mut Canvas<Window>, state: &State, x: u32, rect_width: f32, rect_height: u32) -> (Rect, Color) {
+    let alpha = ((1.0 - fmin(1.0, ((rect_height + RECT_HEIGHT as f32 / 2.0) / (RECT_HEIGHT as f32)))) * 255.0) as u8;
+    let rect_height = cmp::min(rect_height as u32, HEIGHT);
+    let x = x as i32;
+    let y = ((HEIGHT / 2) - (rect_height / 2)) as i32;
+    Rect::new(x, y, rect_width, rect_height), Color::RGB(alpha, alpha, alpha);
 }
 
 struct ProceduralGenerator {
@@ -121,7 +133,28 @@ impl ProceduralGenerator {
     }
 
     fn get_image(&self, width: u32, height: u32, timestamp: Instant) -> ? {
-        // we need to convert from rect -> 
+        canvas.set_draw_color(Color::RGB(255, 255, 255));
+        canvas.clear();
+        canvas.set_draw_color(Color::RGB(0, 0, 0));
+        let mut theta = STARTING_DIRECTION + (FOV / 2.0);
+        let delta_theta = FOV / (SAMPLES as f32);
+        let width = WIDTH / SAMPLES;
+        for i in 0..SAMPLES {
+            let vector = angle_to_vec(theta);
+            let mut dist = f32::INFINITY;
+            for cube in map {
+                if let Some(intersection_distance) = intersect(position, vector, *cube) {
+                    dist = fmin(dist, intersection_distance);
+                }
+            }
+            if dist < f32::INFINITY {
+                let height = distance_to_height(dist, (STARTING_DIRECTION - theta).abs());
+                draw_rect(canvas, state, i * width, height, width);
+            }
+            theta -= delta_theta;
+        }
+        canvas.present();
+        // we need to convert from rect -> a pixel buffer?
         // how to draw rect on png?
     }
 }
