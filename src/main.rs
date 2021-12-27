@@ -246,7 +246,8 @@ fn write_png(image: Image) {
     let timestamp = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap();
-    let path_string = format!("{}.png", timestamp.as_secs().to_string());
+    std::fs::create_dir("./dump");
+    let path_string = format!("./dump/{}.png", timestamp.as_secs().to_string());
     println!("Saving with filename {}", path_string);
     let path = Path::new(&path_string);
     let file = File::create(path).unwrap();
