@@ -27,15 +27,15 @@ struct State {
 }
 
 /// Constants
-// 75 deg
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 480;
 const SPEED: f32 = 0.5;
 // 1 deg * 2
 const ROT_SPEED: f32 = 0.017453292519943 * 2.0;
 const STARTING_POSITION: Point = Point{ x: 0.0, y: 0.0 };
+// 75 deg
 const FOV: f32 = f32::consts::PI * 0.416;
-const SAMPLES: u32 = 800;
+const SAMPLES: u32 = WIDTH / 10;
 const STARTING_DIRECTION: f32 = f32::consts::PI / 4.0;
 
 /// Helper Functions
@@ -61,8 +61,7 @@ fn angle_to_vec(theta: f32) -> Vector {
     return Vector { x: f32::cos(theta), y: f32::sin(theta) };
 }
 // Intersection algorithm AABB
-// - Returns -1 on failed intersection, otherwise returns distance
-// TODO: Consider changing it -> an optional on failed intersection (it'll clean up other areas)
+// Returns distance of intersection if it exists.
 fn intersect(origin: Point, vec: Vector, cube: Point) -> Option<f32> {
     let mut tmin = f32::NEG_INFINITY;
     let mut tmax = f32::INFINITY;
@@ -85,7 +84,8 @@ fn intersect(origin: Point, vec: Vector, cube: Point) -> Option<f32> {
         None
     }
 }
-fn gen_map(map: &mut Vec<Point>) {
+fn gen_map() -> Vec<Point> {
+    let mut map = Vec::new();
     map.push(Point{ x: 1.0, y: 1.0 });
     map.push(Point{ x: 3.0, y: 3.0 });
     map.push(Point{ x: 3.0, y: 4.0 });
@@ -94,11 +94,13 @@ fn gen_map(map: &mut Vec<Point>) {
     map.push(Point{ x: 5.0, y: 3.0 });
     map.push(Point{ x: 5.0, y: 4.0 });
     map.push(Point{ x: 5.0, y: 5.0 });
+    map
 }
 // TODO: Why does this still cause minor distortion?
 fn distance_to_height(dist: f32, angle: f32) -> f32 {
     return ((HEIGHT) as f32) / (dist * f32::cos(angle));
 }
+
 fn draw_rect(canvas: &mut Canvas<Window>, state: &State, x: u32, height: f32, width: u32) {
     if state.fog {
         let alpha = ((1.0 - fmin(1.0, ((height + HEIGHT as f32 / 2.0) / (HEIGHT as f32)))) * 255.0) as u8;
@@ -112,50 +114,94 @@ fn draw_rect(canvas: &mut Canvas<Window>, state: &State, x: u32, height: f32, wi
     canvas.fill_rect(Rect::new(x, y, width, height));
 }
 
-// TODO: use this
-fn create_rect(canvas: &mut Canvas<Window>, state: &State, x: u32, rect_width: f32, rect_height: u32) -> (Rect, Color) {
-    let alpha = ((1.0 - fmin(1.0, ((rect_height + RECT_HEIGHT as f32 / 2.0) / (RECT_HEIGHT as f32)))) * 255.0) as u8;
+fn create_rect(x: u32, rect_width: u32, rect_height: f32) -> (Rect, Color) {
+    let alpha = ((1.0 - fmin(1.0, ((rect_height + rect_height as f32 / 2.0) / (rect_height as f32)))) * 255.0) as u8;
     let rect_height = cmp::min(rect_height as u32, HEIGHT);
     let x = x as i32;
     let y = ((HEIGHT / 2) - (rect_height / 2)) as i32;
-    Rect::new(x, y, rect_width, rect_height), Color::RGB(alpha, alpha, alpha);
+    (Rect::new(x, y, rect_width, rect_height), Color::RGB(alpha, alpha, alpha))
 }
 
 struct ProceduralGenerator {
-    start_time: Instant
+    start_time: Instant,
+    map: Vec<Point>,
+}
+
+// pixel width in bytes
+const IMAGE_PIXEL_WIDTH: u32 = 3;
+// Image is just a buffer with the associated metadata
+struct Image {
+    buf: Vec<u8>,
+    pixel_width: usize,
+    pixel_height: usize,
+}
+
+impl Image {
+    // TODO: remove SDL2 dependency
+    pub fn draw_rect(
+        &mut self,
+        rect: Rect,
+        color: Color,
+    ) {
+        let (x, y, width, height) = (rect.x() as usize, rect.y() as usize, rect.width() as usize, rect.height() as usize);
+        for i in 0..width {
+            for j in 0..height {
+                let xi = x + i;
+                let yi = y + j;
+                self.draw_pixel(xi, yi, color);
+            }
+        }
+
+    }
+
+    fn draw_pixel(&mut self, x: usize, y: usize, color: Color) {
+        let index = ((y * self.pixel_width) + x) * 3;
+        self.buf[index] = color.r;
+        self.buf[index + 1] = color.g;
+        self.buf[index + 2] = color.b;
+    }
 }
 
 impl ProceduralGenerator {
     pub fn new() -> ProceduralGenerator {
         ProceduralGenerator {
             start_time: Instant::now(),
+            // TODO: generate the map
+            map: gen_map(),
         }
     }
 
-    fn get_image(&self, width: u32, height: u32, timestamp: Instant) -> ? {
-        canvas.set_draw_color(Color::RGB(255, 255, 255));
-        canvas.clear();
-        canvas.set_draw_color(Color::RGB(0, 0, 0));
+    fn get_image(&self, width: u32, height: u32, timestamp: Instant) -> Image {
         let mut theta = STARTING_DIRECTION + (FOV / 2.0);
         let delta_theta = FOV / (SAMPLES as f32);
         let width = WIDTH / SAMPLES;
+        let mut rects = Vec::new();
         for i in 0..SAMPLES {
             let vector = angle_to_vec(theta);
             let mut dist = f32::INFINITY;
-            for cube in map {
-                if let Some(intersection_distance) = intersect(position, vector, *cube) {
+            for cube in &self.map {
+                if let Some(intersection_distance) = intersect(STARTING_POSITION, vector, *cube) {
                     dist = fmin(dist, intersection_distance);
                 }
             }
             if dist < f32::INFINITY {
                 let height = distance_to_height(dist, (STARTING_DIRECTION - theta).abs());
-                draw_rect(canvas, state, i * width, height, width);
+                rects.push(create_rect(i * width, width, height))
             }
             theta -= delta_theta;
         }
-        canvas.present();
         // we need to convert from rect -> a pixel buffer?
-        // how to draw rect on png?
+        let (w, h) = (width as usize, height as usize);
+        let buffer_size = w * h * 3;
+        let mut image = Image {
+            buf: vec![0; buffer_size],
+            pixel_width: width as usize,
+            pixel_height: height as usize,
+        };
+        for (rect, color) in rects {
+            image.draw_rect(rect, color);
+        }
+        image
     }
 }
 
@@ -209,8 +255,7 @@ fn main() {
       direction: f32::consts::PI / 4.0,
       fog: true,
     };
-    let mut map: Vec<Point> = Vec::new();
-    gen_map(&mut map);
+    let map = gen_map();
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     'running: loop {
