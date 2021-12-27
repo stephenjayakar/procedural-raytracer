@@ -1,12 +1,17 @@
 /// Imports
 extern crate sdl2;
+extern crate png;
+
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
-use std::time::{Duration, Instant};
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path;
+use std::time::{Duration, Instant, SystemTime};
 use std::f32;
 use std::cmp;
 
@@ -114,11 +119,10 @@ fn draw_rect(canvas: &mut Canvas<Window>, state: &State, x: u32, height: f32, wi
     canvas.fill_rect(Rect::new(x, y, width, height));
 }
 
-fn create_rect(x: u32, rect_width: u32, rect_height: f32) -> (Rect, Color) {
-    let alpha = ((1.0 - fmin(1.0, ((rect_height + rect_height as f32 / 2.0) / (rect_height as f32)))) * 255.0) as u8;
-    let rect_height = cmp::min(rect_height as u32, HEIGHT);
+fn create_rect(x: u32, rect_width: u32, rect_height: u32, image_height: u32) -> (Rect, Color) {
+    let alpha = ((1.0 - fmin(1.0, (((rect_height + rect_height) as f32 / 2.0) / (rect_height as f32)))) * 255.0) as u8;
     let x = x as i32;
-    let y = ((HEIGHT / 2) - (rect_height / 2)) as i32;
+    let y = ((image_height / 2) - (rect_height / 2)) as i32;
     (Rect::new(x, y, rect_width, rect_height), Color::RGB(alpha, alpha, alpha))
 }
 
@@ -128,7 +132,7 @@ struct ProceduralGenerator {
 }
 
 // pixel width in bytes
-const IMAGE_PIXEL_WIDTH: u32 = 3;
+const IMAGE_PIXEL_WIDTH: usize = 3;
 // Image is just a buffer with the associated metadata
 struct Image {
     buf: Vec<u8>,
@@ -155,7 +159,7 @@ impl Image {
     }
 
     fn draw_pixel(&mut self, x: usize, y: usize, color: Color) {
-        let index = ((y * self.pixel_width) + x) * 3;
+        let index = ((y * self.pixel_width) + x) * IMAGE_PIXEL_WIDTH;
         self.buf[index] = color.r;
         self.buf[index + 1] = color.g;
         self.buf[index + 2] = color.b;
@@ -171,10 +175,12 @@ impl ProceduralGenerator {
         }
     }
 
-    fn get_image(&self, width: u32, height: u32, timestamp: Instant) -> Image {
+    // TODO: use timestamp w/ start_time
+    fn get_image(&self, width: u32, height: u32, timestamp: Option<Instant>) -> Image {
+        // Render pass: create rectangles
         let mut theta = STARTING_DIRECTION + (FOV / 2.0);
         let delta_theta = FOV / (SAMPLES as f32);
-        let width = WIDTH / SAMPLES;
+        let rect_width = width / SAMPLES;
         let mut rects = Vec::new();
         for i in 0..SAMPLES {
             let vector = angle_to_vec(theta);
@@ -185,14 +191,18 @@ impl ProceduralGenerator {
                 }
             }
             if dist < f32::INFINITY {
-                let height = distance_to_height(dist, (STARTING_DIRECTION - theta).abs());
-                rects.push(create_rect(i * width, width, height))
+                let rect_height = cmp::min(
+                    distance_to_height(dist, (STARTING_DIRECTION - theta).abs()) as u32,
+                    height,
+                );
+                rects.push(create_rect(i * rect_width, rect_width, rect_height, height))
             }
             theta -= delta_theta;
         }
-        // we need to convert from rect -> a pixel buffer?
+
+        // Create and write to buffer
         let (w, h) = (width as usize, height as usize);
-        let buffer_size = w * h * 3;
+        let buffer_size = w * h * IMAGE_PIXEL_WIDTH;
         let mut image = Image {
             buf: vec![0; buffer_size],
             pixel_width: width as usize,
@@ -232,6 +242,23 @@ fn render(canvas: &mut Canvas<Window>,
     canvas.present();
 }
 
+fn write_png(image: Image) {
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
+    let path_string = format!("{}.png", timestamp.as_secs().to_string());
+    println!("Saving with filename {}", path_string);
+    let path = Path::new(&path_string);
+    let file = File::create(path).unwrap();
+    let w = BufWriter::new(file);
+
+    let mut encoder = png::Encoder::new(w, image.pixel_width as u32, image.pixel_height as u32);
+    encoder.set_color(png::ColorType::RGB);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(&image.buf).expect("Failed to write image buffer to png");
+}
+
 /// Main
 fn main() {
     // Canvas setup
@@ -257,6 +284,8 @@ fn main() {
     };
     let map = gen_map();
     let mut event_pump = sdl_context.event_pump().unwrap();
+
+    let procedural_generator = ProceduralGenerator::new();
 
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -286,6 +315,11 @@ fn main() {
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
                     state.direction -= ROT_SPEED;
                     render_flag = true;
+                },
+                Event::KeyDown { keycode: Some(Keycode::R), .. } => {
+                    // Render an image and dump it locally
+                    let image = procedural_generator.get_image(WIDTH, HEIGHT, None);
+                    write_png(image);
                 },
                 // Decrease fov
                 Event::KeyDown { keycode: Some(Keycode::Num1), .. } => {
