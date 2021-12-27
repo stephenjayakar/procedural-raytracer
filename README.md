@@ -1,9 +1,3 @@
-# rust-raytracer
+# procedural-raytracer
 
-A remake of my Python3 Raytracer in Rust.  Truthfully used it as a means of learning how to write Rust code correctly, but ended up realizing that Rust is leagues faster than Python.  Might end up adding some additional features as I have more skills under my belt + have more performance bandwidth to work with :)
-
-# Screens
-
-<div align="center">
-  <img src="screenshots/main.png" width=400 height=400>
-</div>
+A procedural raytracer which is a fork of my own project the [rust-raytracer](https://github.com/stephenjayakar/rust-raytracer). This is intended to be able to generate new screens forever of greyscale cubes. The primary intention for this project is to be displayed on an E-ink display throughout the day.
