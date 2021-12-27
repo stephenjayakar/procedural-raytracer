@@ -204,7 +204,7 @@ impl ProceduralGenerator {
         let (w, h) = (width as usize, height as usize);
         let buffer_size = w * h * IMAGE_PIXEL_WIDTH;
         let mut image = Image {
-            buf: vec![0; buffer_size],
+            buf: vec![255; buffer_size],
             pixel_width: width as usize,
             pixel_height: height as usize,
         };
